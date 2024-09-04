@@ -2,41 +2,43 @@ import torch
 from torch_geometric.utils import degree
 import torch.nn as nn
 import torch_geometric as pyg
-import ggcn
+
+from models import ggcn
 
 
 def dirichlet_energy(x, edge_index, rw=False):
+    edge_index = pyg.utils.add_self_loops(edge_index, num_nodes=x.shape[0])[0]
     with torch.no_grad():
         src, dst = edge_index
         deg = degree(src, num_nodes=x.shape[0])
         x = x / torch.norm(x)
-        if not rw:
+        if rw:
+            energy = torch.norm(x[src] - x[dst], dim=1, p=2) ** 2.0
+        else:
             x = x / torch.sqrt(deg + 0.0).view(-1, 1)
-        energy = torch.norm(x[src] - x[dst], dim=1, p=2) ** 2.0
+            energy = 1/(torch.sqrt(deg[src])*torch.sqrt(deg[dst])) * torch.norm(x[src] - x[dst], dim=1, p=2) ** 2.0
 
-        energy = energy.mean()
+        #energy = energy.mean()
 
         energy *= 0.5
 
-    return float(energy.mean().detach().cpu())
+    return float(energy.sum().detach().cpu())#.mean()
 
 
-import scipy
-
-
-def rank_diff(x, norm=True):
+def rank_diff(x):
     with torch.no_grad():
-        if norm:
-            x = x / torch.norm(x)
+        x = x / torch.linalg.norm(x, 'nuc')
+
         i = x.abs().sum(dim=1).argmax()
         j = x.abs().sum(dim=0).argmax()
         mean0 = x[i].view(1, -1)
         mean1 = x[:, j].view(-1, 1)
-        if mean0[0, j] < 0:
+        if mean0[0,j] < 0:
             mean0 = -mean0
         x_hat = mean1 @ mean0
-        x_hat = x_hat / torch.norm(x_hat)
-        return torch.linalg.norm(x - x_hat, ord=1).item()
+        x_hat = x_hat / torch.linalg.norm(x_hat, 'nuc')
+
+        return torch.linalg.norm(x - x_hat, 'nuc').item()
 
 
 class SimpleModel(nn.Module):
@@ -113,6 +115,7 @@ class SimpleModel(nn.Module):
         edge_index = data.edge_index
 
         energies = []
+        energies_sym = []
         rank = []
 
         x_0 = self.enc(x_0)
@@ -139,6 +142,7 @@ class SimpleModel(nn.Module):
 
             x = torch.nn.functional.relu(x)
             energies.append(dirichlet_energy(x, edge_index, rw=True))
+            energies_sym.append(dirichlet_energy(x, edge_index, rw=False))
             rank.append(rank_diff(x))
 
-        return x, energies, rank
+        return x, energies, energies_sym, rank
