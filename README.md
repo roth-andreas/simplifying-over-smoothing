@@ -23,3 +23,7 @@ If you found this work helpful for your own research, you can cite it as follows
   year={2024}
 }
 ```
+
+## Acknowledgement
+
+Funded by the Federal Ministry of Education and Research (BMBF) under grant no. 01IS22094E WEST-AI.
